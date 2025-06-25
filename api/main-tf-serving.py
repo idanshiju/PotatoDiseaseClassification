@@ -1,14 +1,18 @@
+from http.client import responses
+
 from fastapi import FastAPI, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 import numpy as np
 from io import BytesIO
 from PIL import Image
+import requests
 import tensorflow as tf
 import os
 from keras import models
 from keras.layers import TFSMLayer
 import keras
+
 
 app = FastAPI()
 
@@ -24,7 +28,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-MODEL = tf.keras.models.load_model("../1.keras")
+endpoint = "http://localhost:8502/v1/models/potato_model:predict"
 
 CLASS_NAMES = ["Early Blight", "Late Blight", "Healthy"]
 
@@ -45,16 +49,20 @@ async def predict(
 ):
     image = read_file_as_image(await file.read())
     img_batch = np.expand_dims(image, 0)
-
-    predictions = MODEL.predict(img_batch)
-
-    predicted_class = CLASS_NAMES[np.argmax(predictions[0])]
-    confidence = np.max(predictions[0])
-    return {
-        'class': predicted_class,
-        'confidence': float(confidence)
+    json_data = {
+        "instances": img_batch.tolist()
     }
 
+    response=requests.post(endpoint,json=json_data)
+    prediction=np.array(response.json()["predictions"][0])
+
+    predicted_class=np.argmax(prediction)
+    confidence=np.max(prediction)
+
+    return {
+        "class": predicted_class,
+        "confidence": confidence
+    }
 
 if __name__ == "__main__":
     uvicorn.run(app, host='localhost', port=8000)
